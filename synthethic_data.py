@@ -11,6 +11,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from statistics import NormalDist
+from sklearn.utils import shuffle
+import random
 
 
 # In[2]:
@@ -26,11 +28,11 @@ def flip(row, idx_list):
 
 
 def get_overlap(l1, l2):
-    print(f"There were {len(l1)} noisy datapoints")
+    # print(f"There were {len(l1)} noisy datapoints")
     overlap = list(set(l1) & set(l2))
-    print(f"{len(l2)} points were identified as noise")
-    print(
-        f"{len(overlap)}/{len(l2)} were correctly identified as noise. That is {round(len(overlap) / len(l2), 3) * 100}%")
+    # print(f"{len(l2)} points were identified as noise")
+    # print(
+    #     f"{len(overlap)}/{len(l2)} were correctly identified as noise. That is {round(len(overlap) / len(l2), 3) * 100}%")
     return overlap
 
 
@@ -53,34 +55,73 @@ def get_mean_for_overlap(overlap_target, precision=3):
     return round(mean, 2)
 
 
-def create_synthethic_data(overlap_target, n_points=1000, precision=3):
+def create_synthethic_data(overlap_target, n_points=1000, precision=3, exact_points=False):
     feature1 = []
     feature2 = []
     classes = []
 
     n_points = n_points
-    mean = get_mean_for_overlap(overlap_target, precision=3)
+    mean = get_mean_for_overlap(overlap_target, precision=precision)
 
-    for point in range(n_points):
-        if np.random.normal() > 0:
+    if exact_points:
+        for point in range(0, (int(n_points / 2))):
             feature1.append(np.random.normal())
             feature2.append(np.random.normal())
             classes.append(0)
-        else:
+
+        for point in range((int(n_points / 2)), n_points):
             feature1.append(np.random.normal())
             feature2.append(np.random.normal(loc=mean))
             classes.append(1)
+    else:
+        for point in range(n_points):
+            if np.random.normal() > 0:
+                feature1.append(np.random.normal())
+                feature2.append(np.random.normal())
+                classes.append(0)
+            else:
+                feature1.append(np.random.normal())
+                feature2.append(np.random.normal(loc=mean))
+                classes.append(1)
 
-    df = pd.DataFrame({"feature1": feature1, "feature2": feature2, "class": classes})
+    if exact_points:
+        df = pd.DataFrame({"feature1": feature1, "feature2": feature2, "class": classes})
+        df = shuffle(df)
+    else:
+        df = pd.DataFrame({"feature1": feature1, "feature2": feature2, "class": classes})
+
     return df
 
 
-def prepare_data(n_points, noise_level, overlap):
-    data_pure = create_synthethic_data(overlap, n_points=n_points)
+def get_noise_list(noise_level, data):
+    noise = len(data) * noise_level
+    noise_counter = 0
+    df_noisy = data.copy()
+    noise_idx = pd.DataFrame(columns=data.columns)
+
+    while noise_counter != noise:
+        row = df_noisy.sample(replace=True)
+        if row["index"].iloc[0] not in noise_idx["index"]:
+            noise_idx = noise_idx.append(row)
+            noise_counter += 1
+    return noise_idx
+
+
+def prepare_data(n_points, noise_level, overlap, exact_points=False, weights=None):
+    data_pure = create_synthethic_data(overlap, n_points=n_points, exact_points=exact_points)
     data_pure["index"] = data_pure.index
 
     data_noisy = data_pure.copy()
-    noise_idx = data_noisy.sample(frac=noise_level, random_state=18)
+
+    # weights in format of a dictionary: key=class, value=weight
+    if weights:
+        df = data_pure.copy()
+        df['weights'] = df['class'].apply(lambda x: weights[x])
+        noise_idx = df.sample(frac=noise_level, weights='weights')
+    else:
+        noise_idx = data_noisy.sample(frac=noise_level, random_state=18)
+        # noise_idx = get_noise_list(noise_level, data_pure)
+
     data_noisy = data_noisy.apply(flip,
                                   idx_list=noise_idx["index"].tolist(),
                                   axis=1)
