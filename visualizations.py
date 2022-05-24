@@ -49,7 +49,9 @@ def vis_overlap(df, parameter_dict=None):
 
 # In[ ]:
 
-def heat_map(df, title, col="class", sep=True, figsize=(15, 5), parameter_dict=None):
+def heat_map(df, title, col="class", measure='mean', sep=True, figsize=(15, 5), parameter_dict=None, vmin=None, vmax=None, xmin=None,ymin=None,xmax=None,ymax=None):
+    print("title: ", title)
+
     if sep:
         g = sns.FacetGrid(df, col=col)
     else:
@@ -58,18 +60,25 @@ def heat_map(df, title, col="class", sep=True, figsize=(15, 5), parameter_dict=N
     def facet_scatter(x, y, c, **kwargs):
         """Draw scatterplot with point colors from a faceted DataFrame columns."""
         kwargs.pop("color")
+        if (xmin or ymin):
+            ax = plt.gca()
+            ax.set_xlim([xmin, xmax])
+            ax.set_ylim([ymin, ymax])
+            plt.scatter(x,y,c=c,**kwargs)
+        else:
+            plt.scatter(x, y, c=c, **kwargs)
 
-        plt.scatter(x, y, c=c, **kwargs)
+    if not(vmin or vmax):
+        vmin, vmax = df[measure].min(), df[measure].max()
 
-    vmin, vmax = df["mean"].min(), df["mean"].max()
     cmap = sns.color_palette("Spectral_r", as_cmap=True)
 
-    g = g.map(facet_scatter, 'feature2', 'feature1', "mean",
+    g = g.map(facet_scatter, 'feature2', 'feature1', measure,
               s=100, alpha=0.9, vmin=vmin, vmax=vmax, cmap=cmap)
 
-    g.figure.set_size_inches(figsize)
-    g.figure.suptitle(f"n_points: {parameter_dict['n']}, noise_level: {parameter_dict['noise']}, overlap: "
-                      f"{parameter_dict['overlap']}, max_depth: {parameter_dict['tree']}_"+title)
+    g.fig.set_size_inches(figsize)
+    g.fig.suptitle(f"n_points: {parameter_dict['n']}, noise_level: {parameter_dict['noise']}, overlap: "
+                   f"{parameter_dict['overlap']}, max_depth: {parameter_dict['tree']}\n" + title, y=1.0)
 
     # Make space for the colorbar
     g.fig.subplots_adjust(right=.92)
@@ -83,19 +92,23 @@ def heat_map(df, title, col="class", sep=True, figsize=(15, 5), parameter_dict=N
     # Draw the colorbar
     g.fig.colorbar(points, cax=cax)
 
-
-    plt.close(g.figure)
-    g.figure.savefig(f"{parameter_dict['n']}_{parameter_dict['noise']}_{parameter_dict['overlap']}_{parameter_dict['tree']}_"+title+".jpg")
+    plt.close(g.fig)
+    g.fig.savefig(f"{title}.jpg")
+    return g
 
 
 # In[3]:
 
 
-def vis_folds(df, n_splits,parameter_dict=None):
-    rows = int(n_splits / 2)
-    columns = int(n_splits / rows)
+def vis_folds(df, n_splits, parameter_dict=None):
+    if n_splits == 1:
+        rows, columns = 2, 1
+    else:
+        rows = int(n_splits / 2)
+        columns = int(n_splits / rows)
 
     fig, axes = plt.subplots(rows, columns, figsize=(15, 30))
+
     fig.tight_layout(pad=10.0)
     classes = {"0": {"negative": [], "positive": []},
                "1": {"negative": [], "positive": []}}
@@ -105,28 +118,31 @@ def vis_folds(df, n_splits,parameter_dict=None):
                      Line2D([], [], marker='o', color='black', linestyle='None')]
 
     for index, ax in enumerate(axes.reshape(-1, )):
-        data = df[~df[index].isnull()]
-        class_0_n = len(data[(data["class"] == 0) & (data["mean"] < 0)])
-        class_1_n = len(data[(data["class"] == 1) & (data["mean"] < 0)])
+        try:
+            data = df[~df[index].isnull()]
+            class_0_n = len(data[(data["class"] == 0) & (data["mean"] < 0)])
+            class_1_n = len(data[(data["class"] == 1) & (data["mean"] < 0)])
 
-        classes["0"]["negative"].append(class_0_n)
-        classes["1"]["negative"].append(class_1_n)
+            classes["0"]["negative"].append(class_0_n)
+            classes["1"]["negative"].append(class_1_n)
 
-        class_0_p = len(data[(data["class"] == 0) & (data["mean"] > 0)])
-        class_1_p = len(data[(data["class"] == 1) & (data["mean"] > 0)])
+            class_0_p = len(data[(data["class"] == 0) & (data["mean"] > 0)])
+            class_1_p = len(data[(data["class"] == 1) & (data["mean"] > 0)])
 
-        classes["0"]["positive"].append(class_0_p)
-        classes["1"]["positive"].append(class_1_p)
+            classes["0"]["positive"].append(class_0_p)
+            classes["1"]["positive"].append(class_1_p)
 
-        plot = sns.scatterplot(x="index",
-                               y=index,
-                               hue="class_with_noise",
-                               palette={2: "black",
-                                        0: "tomato",
-                                        1: "mediumturquoise"},
-                               legend=False,
-                               data=data,
-                               ax=ax)
+            plot = sns.scatterplot(x="index",
+                                   y=index,
+                                   hue="class_with_noise",
+                                   palette={2: "black",
+                                            0: "tomato",
+                                            1: "mediumturquoise"},
+                                   legend=False,
+                                   data=data,
+                                   ax=ax)
+        except:
+            fig.delaxes(ax)
 
         plot.legend(custom_legend, ["Class 0", "Class 1", "Noise"], loc='lower right')
 
@@ -147,7 +163,7 @@ def vis_folds(df, n_splits,parameter_dict=None):
         fig.suptitle(
             f"On average class 0 has {mean_0_n} points with mean < 0 and {mean_0_p} points with mean > 0\nOn average "
             f"class 1 has {mean_1_n} points with mean < 0 and {mean_1_p} points with mean > 0 "
-            f"\nn_points: {parameter_dict['n']}, overlap: {parameter_dict['overlap']}, noise_level: {parameter_dict['noise']}," 
+            f"\nn_points: {parameter_dict['n']}, overlap: {parameter_dict['overlap']}, noise_level: {parameter_dict['noise']},"
             f" max_depth: {parameter_dict['tree']}",
             y=1.0)
 
@@ -166,13 +182,13 @@ def vis_folds(df, n_splits,parameter_dict=None):
 
 # In[]:
 
-def vis_hist_included(df, bins=10,parameter_dict=None):
+def vis_hist_included(df, bins=10, parameter_dict=None, measure="mean"):
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
     red = (0.984, 0.196, 0.196, 0.5)
     blue = (0.196, 0.984, 0.913, 0.5)
 
     # Class 0 distribution
-    df[df["class"] == 0].hist("mean",
+    df[df["class"] == 0].hist(measure,
                               bins=bins,
                               ax=ax1,
                               legend=True,
@@ -182,7 +198,7 @@ def vis_hist_included(df, bins=10,parameter_dict=None):
     ax1.legend(["Class 0"], loc='upper right')
 
     # Class 1 distribution
-    df[df["class"] == 1].hist("mean",
+    df[df["class"] == 1].hist(measure,
                               bins=bins,
                               ax=ax3,
                               legend=True,
@@ -192,14 +208,14 @@ def vis_hist_included(df, bins=10,parameter_dict=None):
     ax3.legend(["Class 1"], loc='upper right')
 
     # Overlap of the distributions 
-    df[df["class"] == 0].hist("mean",
+    df[df["class"] == 0].hist(measure,
                               bins=bins,
                               ax=ax2,
                               legend=True,
                               edgecolor="black",
                               fc=red)
 
-    df[df["class"] == 1].hist("mean",
+    df[df["class"] == 1].hist(measure,
                               bins=bins,
                               ax=ax2,
                               legend=True,
@@ -209,8 +225,10 @@ def vis_hist_included(df, bins=10,parameter_dict=None):
     ax2.set_title("Overlap")
     ax2.legend(["Class 0", "Class 1"], loc='upper right')
 
-    fig.supxlabel("Mean accuracy change", fontsize=15)
-    fig.supylabel("Number of points", fontsize=15)
+    fig.add_subplot(111, frame_on=False)
+    plt.tick_params(labelcolor="none", bottom=False, left=False)
+    plt.xlabel(f"Mean accuracy change", fontsize=15)
+    plt.ylabel("Number of points", fontsize=15)
 
     if parameter_dict:
         fig.suptitle(
@@ -227,7 +245,7 @@ def vis_hist_included(df, bins=10,parameter_dict=None):
         fig.savefig("avg_mean_distribution1.jpg")
 
 
-def vis_hist_excluded(df, bins=10,parameter_dict=None):
+def vis_hist_excluded(df, bins=10, parameter_dict=None, measure="mean"):
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
 
     red = (0.984, 0.196, 0.196, 0.5)
@@ -237,7 +255,7 @@ def vis_hist_excluded(df, bins=10,parameter_dict=None):
     class_1_df = df[df["class_with_noise"] == 1]
 
     # Class 0 distribution
-    class_0_df.hist("mean",
+    class_0_df.hist(measure,
                     bins=bins,
                     ax=ax1,
                     legend=True,
@@ -247,7 +265,7 @@ def vis_hist_excluded(df, bins=10,parameter_dict=None):
     ax1.legend(["Class 0"], loc='upper right')
 
     # Class 1 distribution
-    class_1_df.hist("mean",
+    class_1_df.hist(measure,
                     bins=bins,
                     ax=ax3,
                     legend=True,
@@ -257,14 +275,14 @@ def vis_hist_excluded(df, bins=10,parameter_dict=None):
     ax3.legend(["Class 1"], loc='upper right')
 
     # Overlap of the distributions 
-    class_0_df.hist("mean",
+    class_0_df.hist(measure,
                     bins=bins,
                     ax=ax2,
                     legend=True,
                     edgecolor="black",
                     fc=red)
 
-    class_1_df.hist("mean",
+    class_1_df.hist(measure,
                     bins=bins,
                     ax=ax2,
                     legend=True,
@@ -274,8 +292,10 @@ def vis_hist_excluded(df, bins=10,parameter_dict=None):
     ax2.set_title("Overlap")
     ax2.legend(["Class 0", "Class 1"], loc='upper right')
 
-    fig.supxlabel("Mean accuracy change", fontsize=15)
-    fig.supylabel("Number of points", fontsize=15)
+    fig.add_subplot(111, frame_on=False)
+    plt.tick_params(labelcolor="none", bottom=False, left=False)
+    plt.xlabel(f"Mean accuracy change", fontsize=15)
+    plt.ylabel("Number of points", fontsize=15)
 
     if parameter_dict:
         fig.suptitle(
@@ -292,7 +312,7 @@ def vis_hist_excluded(df, bins=10,parameter_dict=None):
         fig.savefig("avg_mean_distribution2.jpg")
 
 
-def vis_hist_separate(df, bins=10, parameter_dict=None):
+def vis_hist_separate(df, bins=10, parameter_dict=None, measure="mean"):
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
 
     red = (0.984, 0.196, 0.196, 0.5)
@@ -303,7 +323,7 @@ def vis_hist_separate(df, bins=10, parameter_dict=None):
     noise_df = df[df["class_with_noise"] == 2]
 
     # Noise distribution
-    noise_df.hist("mean",
+    noise_df.hist(measure,
                   legend=True,
                   color=(0.549, 0.549, 0.549),
                   edgecolor="black",
@@ -312,21 +332,21 @@ def vis_hist_separate(df, bins=10, parameter_dict=None):
     ax1.legend(["Noise"], loc='upper right')
 
     # Overlap of the distributions 
-    class_0_df.hist("mean",
+    class_0_df.hist(measure,
                     bins=bins,
                     ax=ax2,
                     legend=True,
                     edgecolor="black",
                     fc=red)
 
-    class_1_df.hist("mean",
+    class_1_df.hist(measure,
                     bins=bins,
                     ax=ax2,
                     legend=True,
                     edgecolor="black",
                     fc=blue)
 
-    noise_df.hist("mean",
+    noise_df.hist(measure,
                   legend=True,
                   fc=(0, 0, 0, 0.5),
                   ax=ax2)
@@ -361,8 +381,10 @@ def vis_hist_separate(df, bins=10, parameter_dict=None):
     ax3.set_title("Overlap but normalized")
     ax3.legend(["Class 0", "Class 1", "Noise"], loc='upper right')
 
-    fig.supxlabel("Mean accuracy change", fontsize=15)
-    fig.supylabel("Number of points", fontsize=15)
+    fig.add_subplot(111, frame_on=False)
+    plt.tick_params(labelcolor="none", bottom=False, left=False)
+    plt.xlabel(f"Mean accuracy change", fontsize=15)
+    plt.ylabel("Number of points", fontsize=15)
 
     if parameter_dict:
         fig.suptitle(
@@ -429,8 +451,10 @@ def vis_hist_included_folds(df, n_folds, bins=10, figsize=(15, 30), parameter_di
         ax[1].set_title(f"Overlap, fold: {index}")
         ax[1].legend(["Class 0", "Class 1"], loc='upper right')
 
-    fig.supxlabel(f"Mean accuracy change", fontsize=15)
-    fig.supylabel("Number of points", fontsize=15)
+    fig.add_subplot(111, frame_on=False)
+    plt.tick_params(labelcolor="none", bottom=False, left=False)
+    plt.xlabel(f"Mean accuracy change", fontsize=15)
+    plt.ylabel("Number of points", fontsize=15)
 
     if parameter_dict:
         fig.suptitle(
@@ -495,8 +519,10 @@ def vis_hist_excluded_folds(df, n_folds, bins=10, figsize=(15, 30), parameter_di
         ax[1].set_title(f"Overlap, fold: {index}")
         ax[1].legend(["Class 0", "Class 1"], loc='upper right')
 
-    fig.supxlabel(f"Mean accuracy change", fontsize=15)
-    fig.supylabel("Number of points", fontsize=15)
+    fig.add_subplot(111, frame_on=False)
+    plt.tick_params(labelcolor="none", bottom=False, left=False)
+    plt.xlabel(f"Mean accuracy change", fontsize=15)
+    plt.ylabel("Number of points", fontsize=15)
 
     if parameter_dict:
         fig.suptitle(
@@ -585,8 +611,10 @@ def vis_hist_separate_folds(df, n_folds, bins=10, figsize=(15, 30), parameter_di
         ax[2].set_title("Overlap but normalized")
         ax[2].legend(["Class 0", "Class 1", "Noise"], loc='upper right')
 
-    fig.supxlabel("Mean accuracy change", fontsize=15)
-    fig.supylabel("Number of points", fontsize=15)
+    fig.add_subplot(111, frame_on=False)
+    plt.tick_params(labelcolor="none", bottom=False, left=False)
+    plt.xlabel(f"Mean accuracy change", fontsize=15)
+    plt.ylabel("Number of points", fontsize=15)
 
     if parameter_dict:
         fig.suptitle(f"Accuracy change distribution - noise as a separate class\nn_points: {parameter_dict['n']}, "
@@ -600,3 +628,27 @@ def vis_hist_separate_folds(df, n_folds, bins=10, figsize=(15, 30), parameter_di
         fig.suptitle("Accuracy change distribution - noise as a separate class", fontsize=15)
         plt.close(fig)
         fig.savefig("mean_distribution_noise_class_folds.jpg")
+
+
+def create_vis(df, n_folds, parameter_dict=None, bins=10, figsize=(15, 30)):
+    vis_overlap(df, parameter_dict=parameter_dict)
+
+    print("Creating heat map...")
+    heat_map(df, "Heat map with noise included - classes separated", parameter_dict=parameter_dict, sep=True)
+    heat_map(df, "Heat map with noise included", parameter_dict=parameter_dict, sep=False)
+    heat_map(df, "Heat map with noise as a separate class - classes separated", parameter_dict=parameter_dict, col="class_with_noise", sep=True)
+    heat_map(df, "Heat map with noise as a separate class", parameter_dict=parameter_dict, col="class_with_noise", sep=False)
+
+
+
+    print("Creating general histograms...")
+    vis_hist_included(df, parameter_dict=parameter_dict)
+    vis_hist_excluded(df, parameter_dict=parameter_dict)
+    vis_hist_separate(df, parameter_dict=parameter_dict)
+
+    if n_folds > 1:
+        print("Creating histograms for each fold...")
+        vis_folds(df, n_folds, parameter_dict=parameter_dict)
+        vis_hist_included_folds(df, n_folds, parameter_dict=parameter_dict)
+        vis_hist_excluded_folds(df, n_folds, parameter_dict=parameter_dict)
+        vis_hist_separate_folds(df, n_folds, parameter_dict=parameter_dict)
