@@ -1,6 +1,3 @@
-# Bootstrap_data_valuation
+## Code for the Bootstrap Data Valuation (BDV) BTR 
 
-## TODO
-- **Clean up the code**: put tests into a seperate file, put the code from python notebook to python file 
-- Create file with example data valuation both for synthetic data and real data 
-- Create file with comparisions to Shapley Value data valuation 
+The core of the BDV can be found in the 
